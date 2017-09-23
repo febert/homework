@@ -10,6 +10,7 @@ from dqn_utils import *
 
 OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
 
+
 def learn(env,
           q_func,
           optimizer_spec,

@@ -87,3 +87,8 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+data/
+training_data/
+modeldata/
+.idea/
