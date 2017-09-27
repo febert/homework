@@ -127,14 +127,41 @@ def learn(env,
     # q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
     # Older versions of TensorFlow may require using "VARIABLES" instead of "GLOBAL_VARIABLES"
     ######
-    
-    # YOUR CODE HERE
+
+    target_q_values = q_func(obs_tp1_float, num_actions, "target_q_func")
+
+    q_values = q_func(obs_t_float, num_actions, "q_func")
+
+    double_q = False
+    if double_q:
+        q_values_tp1 = q_func(obs_tp1_float, num_actions, "q_func", reuse=True)
+        a_prime_star = tf.stop_gradient(tf.arg_max(q_values_tp1, -1))
+    else:
+        a_prime_star = tf.arg_max(target_q_values, -1)
+
+    # first_col = tf.range(0, q_values.shape[0])
+    # indices = tf.concat([first_col, a_prime_star], axis=1)
+    # q_val_of_aprimestar = tf.gather_nd(target_q_values, indices)
+    q_val_of_aprimestar = tf.reduce_sum(tf.one_hot(a_prime_star,
+                        depth=num_actions, on_value=1., off_value=0.)*target_q_values, axis=1)
+    target = rew_t_ph + gamma*q_val_of_aprimestar*done_mask_ph
+
+    # first_col = tf.range(0, q_values.shape[0])
+    # indices = tf.concat([first_col, act_t_ph], axis=1)
+    # q_val_of_action = tf.gather_nd(q_values, indices)
+    q_val_of_action = tf.reduce_sum(tf.one_hot(act_t_ph,
+                        depth=num_actions, on_value=1., off_value=0.)*q_values, axis=1)
+
+    total_error = tf.reduce_mean(tf.square(q_val_of_action - target))
+
+    q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
+    target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
 
     ######
 
     # construct optimization op (with gradient clipping)
-    learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
-    optimizer = optimizer_spec.constructor(learning_rate=learning_rate, **optimizer_spec.kwargs)
+    learning_rate_ph = tf.placeholder(tf.float32, (), name="learning_rate")
+    optimizer = optimizer_spec.constructor(learning_rate=learning_rate_ph, **optimizer_spec.kwargs)
     train_fn = minimize_and_clip(optimizer, total_error,
                  var_list=q_func_vars, clip_val=grad_norm_clipping)
 
@@ -157,6 +184,10 @@ def learn(env,
     best_mean_episode_reward = -float('inf')
     last_obs = env.reset()
     LOG_EVERY_N_STEPS = 10000
+
+    done = False
+
+    replay_buffer.store_frame(last_obs)
 
     for t in itertools.count():
         ### 1. Check stopping criterion
@@ -194,8 +225,26 @@ def learn(env,
         # might as well be random, since you haven't trained your net...)
 
         #####
-        
-        # YOUR CODE HERE
+
+        if done:
+            last_obs = env.reset()
+
+        p = exploration.value(t)
+        explore = np.random.choice(2, 1, p=[1 - p, p])  # pick random when ==1
+
+        if explore == 1 or not model_initialized:
+            action = env.action_space.sample()
+        else:
+            recent_obs = replay_buffer.encode_recent_observation()
+
+            [q_values_np] = session.run([q_values],feed_dict={obs_t_ph: recent_obs.reshape((1,img_h, img_w, img_c*frame_history_len))})
+            action = np.argmax(q_values_np)
+
+        idx = replay_buffer.store_frame(last_obs)
+        last_obs, reward, done, info = env.step(action)
+
+        replay_buffer.store_effect(idx, action, reward, done)
+
 
         #####
 
@@ -244,8 +293,34 @@ def learn(env,
             # you should update every target_update_freq steps, and you may find the
             # variable num_param_updates useful for this (it was initialized to 0)
             #####
-            
-            # YOUR CODE HERE
+
+            obs_batch, act_batch, rew_batch, next_obs_batch, done_mask = replay_buffer.sample(batch_size)
+
+            if not model_initialized:
+                model_initialized = True
+                initialize_interdependent_variables(session, tf.global_variables(), {
+                           obs_t_ph: obs_batch,
+                           obs_tp1_ph: next_obs_batch,
+                       })
+
+            lr = optimizer_spec.lr_schedule.value(t)
+
+            feed_dict = {
+                obs_t_ph: obs_batch,
+                act_t_ph: act_batch,
+                rew_t_ph: rew_batch,
+                obs_tp1_ph: next_obs_batch,
+                done_mask_ph: done_mask,
+                learning_rate_ph:lr
+            }
+
+            _, total_error_val, target_val = session.run([train_fn, total_error, target], feed_dict=feed_dict)
+
+            num_param_updates += 1
+
+            if num_param_updates % target_update_freq == 0:
+                print('updating target network...')
+                session.run(update_target_fn)
 
             #####
 
@@ -262,4 +337,5 @@ def learn(env,
             print("episodes %d" % len(episode_rewards))
             print("exploration %f" % exploration.value(t))
             print("learning_rate %f" % optimizer_spec.lr_schedule.value(t))
+            print('bellman error: {}'.format(total_error_val))
             sys.stdout.flush()
