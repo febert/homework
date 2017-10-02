@@ -235,25 +235,49 @@ def learn(conf,
         # might as well be random, since you haven't trained your net...)
 
         #####
-
-        if done:
-            last_obs = env.reset()
-
-        p = exploration.value(t)
-        explore = np.random.choice(2, 1, p=[1 - p, p])  # pick random when ==1
-
-        if explore == 1 or not model_initialized:
-            action = env.action_space.sample()
-        else:
+        if 'jason_exp' in conf:
+            obs_idx = replay_buffer.store_frame(last_obs)
             recent_obs = replay_buffer.encode_recent_observation()
 
-            [q_values_np] = session.run([q_func_t],feed_dict={obs_t_ph: recent_obs[None,...]})
-            action = np.argmax(q_values_np)
+            if model_initialized:
+                q_feed = {
+                    obs_t_ph: recent_obs[None, :]
+                }
+                q_vals = session.run(q_func_t, q_feed)
+                action = np.argmax(q_vals, axis=-1)
 
-        idx = replay_buffer.store_frame(last_obs)
-        last_obs, reward, done, info = env.step(action)
+                epsilon = exploration.value(t)
+                eps_mask = np.random.binomial(1, epsilon, action.shape[0])
+                action += eps_mask * (np.random.randint(0, num_actions, action.shape[0]) - action)
+            else:
+                action = np.random.randint(0, num_actions, [1])
 
-        replay_buffer.store_effect(idx, action, reward, done)
+            obs, reward, done, info = env.step(action)
+            replay_buffer.store_effect(obs_idx, action, reward, done)
+
+            if done:
+                last_obs = env.reset()
+            else:
+                last_obs = obs
+        else:
+            if done:
+                last_obs = env.reset()
+
+            p = exploration.value(t)
+            explore = np.random.choice(2, 1, p=[1 - p, p])  # pick random when ==1
+
+            if explore == 1 or not model_initialized:
+                action = env.action_space.sample()
+            else:
+                recent_obs = replay_buffer.encode_recent_observation()
+
+                [q_values_np] = session.run([q_func_t],feed_dict={obs_t_ph: recent_obs[None,...]})
+                action = np.argmax(q_values_np)
+
+            idx = replay_buffer.store_frame(last_obs)
+            last_obs, reward, done, info = env.step(action)
+
+            replay_buffer.store_effect(idx, action, reward, done)
 
 
         #####
