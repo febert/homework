@@ -3,12 +3,12 @@ import gym.spaces
 import itertools
 import numpy as np
 import random
-import tensorflow as tf
+import tensorflow                as tf
 import tensorflow.contrib.layers as layers
 from collections import namedtuple
 from dqn_utils import *
 
-import pdb
+
 
 OptimizerSpec = namedtuple("OptimizerSpec", ["constructor", "kwargs", "lr_schedule"])
 
@@ -23,11 +23,12 @@ def learn(conf,
           replay_buffer_size=1000000,
           batch_size=32,
           gamma=0.99,
-          learning_starts = 50000,
+          learning_starts=50000,
           learning_freq=4,
           frame_history_len=4,
           target_update_freq=10000,
-          grad_norm_clipping=10):
+          grad_norm_clipping=10,
+          ):
     """Run Deep Q-learning algorithm.
 
     You can specify your own convnet using q_func.
@@ -79,11 +80,13 @@ def learn(conf,
         If not None gradients' norms are clipped to this value.
     """
     assert type(env.observation_space) == gym.spaces.Box
-    assert type(env.action_space)      == gym.spaces.Discrete
+    assert type(env.action_space) == gym.spaces.Discrete
 
     ###############
     # BUILD MODEL #
     ###############
+
+    print("building jason model")
 
     if len(env.observation_space.shape) == 1:
         # This means we are running on low-dimensional observations (e.g. RAM)
@@ -95,22 +98,22 @@ def learn(conf,
 
     # set up placeholders
     # placeholder for current observation (or state)
-    obs_t_ph              = tf.placeholder(tf.uint8, [None] + list(input_shape), name="observations")
+    obs_t_ph = tf.placeholder(tf.uint8, [None] + list(input_shape))
     # placeholder for current action
-    act_t_ph              = tf.placeholder(tf.int32,   [None], name="actions")
+    act_t_ph = tf.placeholder(tf.int32, [None])
     # placeholder for current reward
-    rew_t_ph              = tf.placeholder(tf.float32, [None], name='rewards')
+    rew_t_ph = tf.placeholder(tf.float32, [None])
     # placeholder for next observation (or state)
-    obs_tp1_ph            = tf.placeholder(tf.uint8, [None] + list(input_shape), name="observations_tp1")
+    obs_tp1_ph = tf.placeholder(tf.uint8, [None] + list(input_shape))
     # placeholder for end of episode mask
     # this value is 1 if the next state corresponds to the end of an episode,
     # in which case there is no Q-value at the next state; at the end of an
     # episode, only the current state reward contributes to the target, not the
     # next state Q-value (i.e. target is just rew_t_ph, not rew_t_ph + gamma * q_tp1)
-    done_mask_ph          = tf.placeholder(tf.float32, [None], "donemask")
+    done_mask_ph = tf.placeholder(tf.float32, [None])
 
     # casting to float on GPU ensures lower data transfer times.
-    obs_t_float   = tf.cast(obs_t_ph,   tf.float32) / 255.0
+    obs_t_float = tf.cast(obs_t_ph, tf.float32) / 255.0
     obs_tp1_float = tf.cast(obs_tp1_ph, tf.float32) / 255.0
 
     # Here, you should fill in your own code to compute the Bellman error. This requires
@@ -131,42 +134,44 @@ def learn(conf,
     # Older versions of TensorFlow may require using "VARIABLES" instead of "GLOBAL_VARIABLES"
     ######
 
-    target_q_func_tp1 = q_func(obs_tp1_float, num_actions, "target_q_func")
+    # YOUR CODE HERE
 
-    q_func_t = q_func(obs_t_float, num_actions, "q_func")
+    ######
 
-    if 'double_q' in conf:
-        print("using double q-learning")
-        q_func_tp1 = q_func(obs_tp1_float, num_actions, "q_func", reuse=True)
-        a_prime_star = tf.arg_max(q_func_tp1, -1)
-
-        q_tp1_mask = tf.one_hot(a_prime_star, depth=num_actions, on_value=1., off_value=0.)
-        q_val_of_aprimestar = tf.reduce_sum(q_tp1_mask * target_q_func_tp1, axis=1)
-        target = rew_t_ph + gamma * q_val_of_aprimestar * (1. - done_mask_ph)
-    else:
-        target = rew_t_ph + gamma * tf.reduce_max(target_q_func_tp1, axis=1) * (1. - done_mask_ph)
-
-    target = tf.stop_gradient(target)
-
-    q_val_of_action = tf.reduce_sum(tf.one_hot(act_t_ph,
-                        depth=num_actions, on_value=1., off_value=0.)*q_func_t, axis=1)
-
-    total_error = tf.reduce_mean(tf.square(q_val_of_action - target))
+    q_func_tf = q_func(obs_t_float, num_actions, scope="q_func", reuse=False)
+    target_q_func_tf = q_func(obs_tp1_float, num_actions, scope="target_q_fuc", reuse=False)
 
     q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='q_func')
     target_q_func_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_q_func')
 
-    ######
+    q_mask = tf.one_hot(act_t_ph, num_actions)
+    q_vals = tf.reduce_sum(q_mask * q_func_tf, axis=-1)
+
+    enable_extras = False
+
+    if enable_extras:
+        # double Q-learning
+        next_q_func_tf = q_func(obs_tp1_float, num_actions, scope="q_func", reuse=True)
+        next_max_idx = tf.argmax(next_q_func_tf, axis=-1)
+        next_q_mask = tf.one_hot(next_max_idx, num_actions);
+        new_q_vals = tf.reduce_sum(next_q_mask * target_q_func_tf, axis=-1)
+    else:
+        new_q_vals = tf.reduce_max(target_q_func_tf, axis=-1)
+
+    new_q_vals = rew_t_ph + gamma * (1.0 - done_mask_ph) * new_q_vals
+    new_q_vals = tf.stop_gradient(new_q_vals)
+    q_error = new_q_vals - q_vals
+    total_error = tf.reduce_mean(huber_loss(q_error))
 
     # construct optimization op (with gradient clipping)
-    learning_rate_ph = tf.placeholder(tf.float32, (), name="learning_rate")
-    optimizer = optimizer_spec.constructor(learning_rate=learning_rate_ph, **optimizer_spec.kwargs)
+    learning_rate = tf.placeholder(tf.float32, (), name="learning_rate")
+    optimizer = optimizer_spec.constructor(learning_rate=learning_rate, **optimizer_spec.kwargs)
     train_fn = minimize_and_clip(optimizer, total_error,
-                 var_list=q_func_vars, clip_val=grad_norm_clipping)
+                                 var_list=q_func_vars, clip_val=grad_norm_clipping)
 
     # update_target_fn will be called periodically to copy Q network to target Q network
     update_target_fn = []
-    for var, var_target in zip(sorted(q_func_vars,        key=lambda v: v.name),
+    for var, var_target in zip(sorted(q_func_vars, key=lambda v: v.name),
                                sorted(target_q_func_vars, key=lambda v: v.name)):
         update_target_fn.append(var_target.assign(var))
     update_target_fn = tf.group(*update_target_fn)
@@ -188,16 +193,11 @@ def learn(conf,
     ###############
     model_initialized = False
     num_param_updates = 0
-    mean_episode_reward      = -float('nan')
+    mean_episode_reward = -float('nan')
     best_mean_episode_reward = -float('inf')
     last_obs = env.reset()
     LOG_EVERY_N_STEPS = 10000
 
-    done = False
-
-    replay_buffer.store_frame(last_obs)
-
-    target_update_counter = 0
 
     for t in itertools.count():
         ### 1. Check stopping criterion
@@ -236,27 +236,33 @@ def learn(conf,
 
         #####
 
-        if done:
-            last_obs = env.reset()
-
-        p = exploration.value(t)
-        explore = np.random.choice(2, 1, p=[1 - p, p])  # pick random when ==1
-
-        if explore == 1 or not model_initialized:
-            action = env.action_space.sample()
-        else:
-            recent_obs = replay_buffer.encode_recent_observation()
-
-            [q_values_np] = session.run([q_func_t],feed_dict={obs_t_ph: recent_obs[None,...]})
-            action = np.argmax(q_values_np)
-
-        idx = replay_buffer.store_frame(last_obs)
-        last_obs, reward, done, info = env.step(action)
-
-        replay_buffer.store_effect(idx, action, reward, done)
-
+        # YOUR CODE HERE
 
         #####
+
+        obs_idx = replay_buffer.store_frame(last_obs)
+        recent_obs = replay_buffer.encode_recent_observation()
+
+        if model_initialized:
+            q_feed = {
+                obs_t_ph: recent_obs[None, :]
+            }
+            q_vals = session.run(q_func_tf, q_feed)
+            action = np.argmax(q_vals, axis=-1)
+
+            epsilon = exploration.value(t)
+            eps_mask = np.random.binomial(1, epsilon, action.shape[0])
+            action += eps_mask * (np.random.randint(0, num_actions, action.shape[0]) - action)
+        else:
+            action = np.random.randint(0, num_actions, [1])
+
+        obs, reward, done, info = env.step(action)
+        replay_buffer.store_effect(obs_idx, action, reward, done)
+
+        if done:
+            last_obs = env.reset()
+        else:
+            last_obs = obs
 
         # at this point, the environment should have been advanced one step (and
         # reset if done was true), and last_obs should point to the new latest
@@ -267,7 +273,7 @@ def learn(conf,
         # for us to learn something useful -- until then, the model will not be
         # initialized and random actions should be taken
         if (t > learning_starts and
-                t % learning_freq == 0 and
+                        t % learning_freq == 0 and
                 replay_buffer.can_sample(batch_size)):
             # Here, you should perform training. Training consists of four steps:
             # 3.a: use the replay buffer to sample a batch of transitions (see the
@@ -304,39 +310,34 @@ def learn(conf,
             # variable num_param_updates useful for this (it was initialized to 0)
             #####
 
-            obs_batch, act_batch, rew_batch, next_obs_batch, done_mask = replay_buffer.sample(batch_size)
+            # YOUR CODE HERE
+
+            #####
+
+            obs_t_batch, act_t_batch, rew_t_batch, obs_tp1_batch, done_mask_batch = replay_buffer.sample(batch_size)
 
             if not model_initialized:
-                model_initialized = True
                 initialize_interdependent_variables(session, tf.global_variables(), {
-                           obs_t_ph: obs_batch,
-                           obs_tp1_ph: next_obs_batch,
-                       })
+                    obs_t_ph: obs_t_batch,
+                    obs_tp1_ph: obs_tp1_batch})
+                model_initialized = True
+
+            if num_param_updates % target_update_freq == 0:
+                session.run(update_target_fn)
 
             lr = optimizer_spec.lr_schedule.value(t)
 
-            feed_dict = {
-                obs_t_ph: obs_batch,
-                act_t_ph: act_batch,
-                rew_t_ph: rew_batch,
-                obs_tp1_ph: next_obs_batch,
-                done_mask_ph: done_mask,
-                learning_rate_ph:lr
+            train_feed = {
+                obs_t_ph: obs_t_batch,
+                act_t_ph: act_t_batch,
+                rew_t_ph: rew_t_batch,
+                obs_tp1_ph: obs_tp1_batch,
+                done_mask_ph: done_mask_batch,
+                learning_rate: lr
             }
+            [total_error_val, _] = session.run([total_error, train_fn], train_feed)
 
-            _, total_error_val, target_val, q_values_val, q_val_of_action_val = session.run([train_fn,
-                                                                                             total_error,
-                                                                                             target,
-                                                                                             q_func_t,
-                                                                                             q_val_of_action], feed_dict=feed_dict)
             num_param_updates += 1
-
-            if num_param_updates % target_update_freq == 0:
-                print('updating target network...')
-                target_update_counter +=1
-                session.run(update_target_fn)
-
-            #####
 
         ### 4. Log progress
         episode_rewards = get_wrapper_by_name(env, "Monitor").get_episode_rewards()
@@ -351,12 +352,9 @@ def learn(conf,
             print("episodes %d" % len(episode_rewards))
             print("exploration %f" % exploration.value(t))
             print("learning_rate %f" % optimizer_spec.lr_schedule.value(t))
-            print('bellman error: {}'.format(total_error_val))
-            print('target_update_counter: {}'.format(target_update_counter))
-            print('replay buffer length:{}'.format(idx))
             sys.stdout.flush()
 
-            [val_summary_str] = session.run([summ_op], {mean_episode_reward_pl:mean_episode_reward,
-                                                        total_error_val_pl:total_error_val,
+            [val_summary_str] = session.run([summ_op], {mean_episode_reward_pl: mean_episode_reward,
+                                                        total_error_val_pl: total_error_val,
                                                         })
             summary_writer.add_summary(val_summary_str, t)

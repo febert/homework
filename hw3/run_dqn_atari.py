@@ -7,10 +7,20 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
-import dqn
+
 from dqn_utils import *
 from atari_wrappers import *
 
+import os
+import importlib
+import sys
+
+from tensorflow.python.platform import app
+from tensorflow.python.platform import flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string('hyper', '', 'hyperparameters configuration file')
+flags.DEFINE_bool('test', False, 'whether to test the model')
+flags.DEFINE_integer('device', 0 ,'the value for CUDA_VISIBLE_DEVICES variable')
 
 def atari_model(img_in, num_actions, scope, reuse=False):
     # as described in https://storage.googleapis.com/deepmind-data/assets/papers/DeepMindNature14236Paper.pdf
@@ -28,9 +38,15 @@ def atari_model(img_in, num_actions, scope, reuse=False):
 
         return out
 
-def atari_learn(env,
+def atari_learn(conf, env,
                 session,
                 num_timesteps):
+
+    if 'jason_model' in conf:
+        import jason_dqn as dqn
+    else:
+        import dqn
+
     # This is just a rough estimate
     num_iterations = float(num_timesteps) / 4.0
 
@@ -61,6 +77,7 @@ def atari_learn(env,
     )
 
     dqn.learn(
+        conf,
         env,
         q_func=atari_model,
         optimizer_spec=optimizer,
@@ -116,7 +133,20 @@ def get_env(task, seed):
 
     return env
 
-def main():
+def main(args):
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.device)
+    print('using CUDA_VISIBLE_DEVICES=', FLAGS.device)
+    from tensorflow.python.client import device_lib
+    print(device_lib.list_local_devices())
+
+    conf_file = FLAGS.hyper
+
+    if not os.path.exists(FLAGS.hyper):
+        sys.exit("Experiment configuration not found")
+    hyperparams = importlib.machinery.SourceFileLoader('conf', conf_file).load_module()
+
+    conf = hyperparams.configuration
+
     # Get Atari games.
     benchmark = gym.benchmark_spec('Atari40M')
 
@@ -127,7 +157,8 @@ def main():
     seed = 0 # Use a seed of zero (you may want to randomize the seed!)
     env = get_env(task, seed)
     session = get_session()
-    atari_learn(env, session, num_timesteps=task.max_timesteps)
+    atari_learn(conf, env, session, num_timesteps=task.max_timesteps)
 
 if __name__ == "__main__":
-    main()
+    tf.logging.set_verbosity(tf.logging.INFO)
+    app.run()

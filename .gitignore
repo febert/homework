@@ -92,3 +92,5 @@ data/
 training_data/
 modeldata/
 .idea/
+
+output/
