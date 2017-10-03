@@ -19,8 +19,8 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('hyper', '', 'hyperparameters configuration file')
-flags.DEFINE_bool('test', False, 'whether to test the model')
 flags.DEFINE_integer('device', 0 ,'the value for CUDA_VISIBLE_DEVICES variable')
+flags.DEFINE_bool('nogpu', False ,'the value for CUDA_VISIBLE_DEVICES variable')
 
 def atari_model(img_in, num_actions, scope, reuse=False):
     # as described in https://storage.googleapis.com/deepmind-data/assets/papers/DeepMindNature14236Paper.pdf
@@ -134,7 +134,10 @@ def get_env(task, seed):
     return env
 
 def main(args):
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.device)
+    if FLAGS.nogpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(FLAGS.device)
     print('using CUDA_VISIBLE_DEVICES=', FLAGS.device)
     from tensorflow.python.client import device_lib
     print(device_lib.list_local_devices())

@@ -29,6 +29,7 @@ def atari_model(img_in, num_actions, scope, reuse=False):
 
         return out
 
+
 def atari_learn(env,
                 session,
                 num_timesteps):

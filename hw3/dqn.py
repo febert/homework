@@ -339,6 +339,13 @@ def learn(conf,
 
             lr = optimizer_spec.lr_schedule.value(t)
 
+            if num_param_updates % target_update_freq == 0:
+                print('updating target network...')
+                target_update_counter +=1
+                session.run(update_target_fn)
+
+            num_param_updates += 1
+
             feed_dict = {
                 obs_t_ph: obs_batch,
                 act_t_ph: act_batch,
@@ -353,12 +360,6 @@ def learn(conf,
                                                                                              target,
                                                                                              q_func_t,
                                                                                              q_val_of_action], feed_dict=feed_dict)
-            num_param_updates += 1
-
-            if num_param_updates % target_update_freq == 0:
-                print('updating target network...')
-                target_update_counter +=1
-                session.run(update_target_fn)
 
             #####
 
