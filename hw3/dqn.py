@@ -27,7 +27,8 @@ def learn(conf,
           learning_freq=4,
           frame_history_len=4,
           target_update_freq=10000,
-          grad_norm_clipping=10):
+          grad_norm_clipping=10,
+          max_iter=None):
     """Run Deep Q-learning algorithm.
 
     You can specify your own convnet using q_func.
@@ -204,6 +205,12 @@ def learn(conf,
         if stopping_criterion is not None and stopping_criterion(env, t):
             break
 
+
+        if max_iter is not None:
+            if t > max_iter:
+                print("maximum number of iterations reached")
+                break
+
         ### 2. Step the env and store the transition
         # At this point, "last_obs" contains the latest observation that was
         # recorded from the simulator. Here, your code needs to store this
@@ -259,6 +266,7 @@ def learn(conf,
                 last_obs = env.reset()
             else:
                 last_obs = obs
+
         else:
             if done:
                 last_obs = env.reset()

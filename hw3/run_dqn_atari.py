@@ -11,6 +11,7 @@ import tensorflow.contrib.layers as layers
 from dqn_utils import *
 from atari_wrappers import *
 
+import json
 import os
 import importlib
 import sys
@@ -40,7 +41,8 @@ def atari_model(img_in, num_actions, scope, reuse=False):
 
 def atari_learn(conf, env,
                 session,
-                num_timesteps):
+                num_timesteps,
+                max_iter = None):
 
     if 'jason_model' in conf:
         import jason_dqn as dqn
@@ -84,14 +86,14 @@ def atari_learn(conf, env,
         session=session,
         exploration=exploration_schedule,
         stopping_criterion=stopping_criterion,
-        replay_buffer_size=1000000,
         batch_size=32,
         gamma=0.99,
         learning_starts=50000,
         learning_freq=4,
         frame_history_len=4,
         target_update_freq=10000,
-        grad_norm_clipping=10
+        grad_norm_clipping=10,
+        max_iter = max_iter
     )
     env.close()
 
@@ -156,11 +158,30 @@ def main(args):
     # Change the index to select a different game.
     task = benchmark.tasks[3]
 
+
     # Run training
     seed = 0 # Use a seed of zero (you may want to randomize the seed!)
     env = get_env(task, seed)
-    session = get_session()
-    atari_learn(conf, env, session, num_timesteps=task.max_timesteps)
+
+    sweep_replaysizes = {1e5,1e6,1e7}
+    # sweep_replaysizes = False
+    if 'sweep' in conf:
+        for par in sweep_replaysizes:
+            conf['replay_buffer_size'] = par
+
+            outputdir = 'tensorflow_data/sweep_replay_size/replay_{}'.format(par)
+            conf['output_dir'] = outputdir +'/modeldata'
+            if not os.path.exists(outputdir):
+                os.mkdir(outputdir +'/modeldata')
+            with open(outputdir +'/configuration.json', 'w') as file:
+                file.write(json.dumps(conf))
+
+            print('using replay buffer size:{}'.format(par))
+            session = get_session()
+            atari_learn(conf, env, session, num_timesteps=task.max_timesteps, max_iter=2e6)
+    else:
+        session = get_session()
+        atari_learn(conf, env, session, num_timesteps=task.max_timesteps)
 
 if __name__ == "__main__":
     tf.logging.set_verbosity(tf.logging.INFO)

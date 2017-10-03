@@ -20,7 +20,6 @@ def learn(conf,
           session,
           exploration=LinearSchedule(1000000, 0.1),
           stopping_criterion=None,
-          replay_buffer_size=1000000,
           batch_size=32,
           gamma=0.99,
           learning_starts=50000,
@@ -28,6 +27,7 @@ def learn(conf,
           frame_history_len=4,
           target_update_freq=10000,
           grad_norm_clipping=10,
+          max_iter = None
           ):
     """Run Deep Q-learning algorithm.
 
@@ -177,6 +177,7 @@ def learn(conf,
     update_target_fn = tf.group(*update_target_fn)
 
     # construct the replay buffer
+    replay_buffer_size = conf['replay_buffer_size']  #usually 1e6
     replay_buffer = ReplayBuffer(replay_buffer_size, frame_history_len)
 
     # summaries
@@ -203,6 +204,11 @@ def learn(conf,
         ### 1. Check stopping criterion
         if stopping_criterion is not None and stopping_criterion(env, t):
             break
+
+        if max_iter is not None:
+            if t > max_iter:
+                print("maximum number of iterations reached")
+                break
 
         ### 2. Step the env and store the transition
         # At this point, "last_obs" contains the latest observation that was
