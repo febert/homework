@@ -236,7 +236,7 @@ def learn(conf,
 
         #####
         if 'jason_exp' in conf:
-            obs_idx = replay_buffer.store_frame(last_obs)
+            idx = replay_buffer.store_frame(last_obs)
             recent_obs = replay_buffer.encode_recent_observation()
 
             if model_initialized:
@@ -253,7 +253,7 @@ def learn(conf,
                 action = np.random.randint(0, num_actions, [1])
 
             obs, reward, done, info = env.step(action)
-            replay_buffer.store_effect(obs_idx, action, reward, done)
+            replay_buffer.store_effect(idx, action, reward, done)
 
             if done:
                 last_obs = env.reset()
