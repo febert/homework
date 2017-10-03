@@ -172,6 +172,7 @@ def main(args):
             outputdir = 'tensorflow_data/sweep_replay_size/replay_{}'.format(par)
             conf['output_dir'] = outputdir +'/modeldata'
             if not os.path.exists(outputdir):
+                os.mkdir(outputdir)
                 os.mkdir(outputdir +'/modeldata')
             with open(outputdir +'/configuration.json', 'w') as file:
                 file.write(json.dumps(conf))
