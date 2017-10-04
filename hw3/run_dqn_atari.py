@@ -163,7 +163,7 @@ def main(args):
     seed = 0 # Use a seed of zero (you may want to randomize the seed!)
     env = get_env(task, seed)
 
-    sweep_replaysizes = {1e5,1e6,1e7}
+    sweep_replaysizes = [1e5,1e6,1e7]
     # sweep_replaysizes = False
     if 'sweep' in conf:
         for par in sweep_replaysizes:

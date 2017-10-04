@@ -1,0 +1,1 @@
+{"output_dir": "tensorflow_data/sweep_replay_size/replay_1000000.0/modeldata", "current_dir": "/home/febert/Documents/deeprl/homework/hw3/tensorflow_data/sweep_replay_size", "replay_buffer_size": 1000000.0, "jason_exp": "", "sweep": "", "experiment_name": "rndaction_var10"}

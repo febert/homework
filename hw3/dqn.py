@@ -20,7 +20,6 @@ def learn(conf,
           session,
           exploration=LinearSchedule(1000000, 0.1),
           stopping_criterion=None,
-          replay_buffer_size=1000000,
           batch_size=32,
           gamma=0.99,
           learning_starts = 50000,
@@ -173,7 +172,7 @@ def learn(conf,
     update_target_fn = tf.group(*update_target_fn)
 
     # construct the replay buffer
-    replay_buffer = ReplayBuffer(replay_buffer_size, frame_history_len)
+    replay_buffer = ReplayBuffer(conf['replay_buffer_size'], frame_history_len)
 
     # summaries
     summaries = []
